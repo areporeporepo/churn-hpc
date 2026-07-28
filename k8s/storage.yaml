@@ -1,0 +1,22 @@
+# Phase 2 — Data ingestion tier: shared RWX dataset volume + results volume.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: churn-dataset-pvc
+spec:
+  accessModes: ["ReadOnlyMany"]
+  storageClassName: standard-rwx        # GKE Filestore (NFS) — shared, read-only fan-out
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: churn-results-pvc
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: standard-rwx
+  resources:
+    requests:
+      storage: 5Gi

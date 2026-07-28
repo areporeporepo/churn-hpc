@@ -1,0 +1,52 @@
+# Phase 1 — Reusable K8s deployment manifest: single-accelerator GPU training job.
+# Exact hardware constraints: CPU/memory requests AND limits, physical GPU count.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: churn-train-gpu
+  labels:
+    app: churn-hpc
+    scale-step: single-gpu
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: churn-hpc
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-l4
+      containers:
+        - name: trainer
+          image: us-docker.pkg.dev/PROJECT/churn-hpc/train:cuda-0.1.0
+          args: ["--data", "/data/Churn_Dataset.csv", "--backend", "gpu",
+                 "--batch-size", "1024", "--epochs", "50",
+                 "--out", "/results/gpu.json"]
+          resources:
+            requests:
+              cpu: "8"            # exact CPU core request
+              memory: 24Gi        # system memory bounds
+              nvidia.com/gpu: 1   # physical accelerator count
+            limits:
+              cpu: "8"
+              memory: 24Gi
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: dataset
+              mountPath: /data
+              readOnly: true
+            - name: nvme-scratch
+              mountPath: /scratch
+            - name: results
+              mountPath: /results
+      volumes:
+        - name: dataset
+          persistentVolumeClaim:
+            claimName: churn-dataset-pvc   # NFS/Filestore-backed, RWX
+        - name: nvme-scratch
+          emptyDir:
+            medium: ""                     # backed by node-local NVMe on GKE local-SSD nodes
+        - name: results
+          persistentVolumeClaim:
+            claimName: churn-results-pvc

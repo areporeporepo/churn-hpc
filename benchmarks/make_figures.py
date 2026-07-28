@@ -1,0 +1,102 @@
+"""Generate profiling figures from benchmarks/results/*.json into reports/figures/."""
+import json
+import pathlib
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+RES = ROOT / "benchmarks" / "results"
+FIG = ROOT / "reports" / "figures"
+FIG.mkdir(parents=True, exist_ok=True)
+
+# Okabe-Ito subset, validated CVD-safe (dataviz six-checks, light mode).
+BLUE, ORANGE, GREEN, VERM = "#0072B2", "#E69F00", "#009E73", "#D55E00"
+plt.rcParams.update({
+    "figure.dpi": 150, "font.size": 10, "axes.spines.top": False,
+    "axes.spines.right": False, "axes.grid": True, "grid.alpha": 0.25,
+    "grid.linewidth": 0.5, "axes.axisbelow": True,
+})
+
+
+def load(name):
+    with open(RES / f"{name}.json") as f:
+        return json.load(f)
+
+
+def bar_labels(ax, bars, fmt):
+    for b in bars:
+        ax.annotate(fmt(b.get_height()), (b.get_x() + b.get_width() / 2, b.get_height()),
+                    ha="center", va="bottom", fontsize=9, fontweight="bold")
+
+
+# ── Fig 1: scaling matrix throughput ─────────────────────────────────────────
+steps = [
+    ("CPU 1-core\nJAX/XLA", load("cpu_1core_jax"), BLUE),
+    ("CPU 10-core\nJAX/XLA", load("cpu_10core_jax"), BLUE),
+    ("CPU 10-core\nPyTorch", load("cpu_10core_torch"), ORANGE),
+    ("M4 GPU (MPS)\nPyTorch bs=512", load("gpu_mps_torch"), GREEN),
+    ("M4 GPU (MPS)\nPyTorch bs=4000", load("gpu_mps_bs4000"), GREEN),
+]
+fig, ax = plt.subplots(figsize=(7.2, 3.6))
+bars = ax.bar([s[0] for s in steps], [s[1]["samples_per_sec"] / 1e6 for s in steps],
+              color=[s[2] for s in steps], width=0.62)
+bar_labels(ax, bars, lambda v: f"{v:.2f}M")
+ax.set_ylabel("Throughput (M samples/sec)")
+ax.set_title("Scaling matrix: training throughput by backend (400 epochs, MLP 128-64-32)")
+fig.tight_layout(); fig.savefig(FIG / "fig1_throughput.png"); plt.close(fig)
+
+# ── Fig 2: batch-size saturation sweep ───────────────────────────────────────
+bss = [128, 512, 2048, 4000]
+gpu = [load(f"gpu_mps_bs{b}")["samples_per_sec"] / 1e6 for b in bss]
+cpu = [load("cpu_10core_jax_bs128")["samples_per_sec"] / 1e6,
+       load("cpu_10core_jax")["samples_per_sec"] / 1e6,
+       load("cpu_10core_jax_bs2048")["samples_per_sec"] / 1e6,
+       load("cpu_10core_jax_bs4000")["samples_per_sec"] / 1e6]
+fig, ax = plt.subplots(figsize=(7.2, 3.6))
+ax.plot(bss, gpu, "-o", color=GREEN, lw=2, ms=7, label="M4 GPU (PyTorch/MPS)")
+ax.plot(bss, cpu, "-o", color=BLUE, lw=2, ms=7, label="CPU 10-core (JAX/XLA)")
+for x, y in zip(bss, gpu):
+    ax.annotate(f"{y:.2f}M", (x, y), textcoords="offset points", xytext=(0, 9),
+                ha="center", fontsize=9, color=GREEN, fontweight="bold")
+ax.set_xscale("log"); ax.set_xticks(bss); ax.set_xticklabels(bss)
+ax.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+ax.set_xlabel("Batch size"); ax.set_ylabel("Throughput (M samples/sec)")
+ax.set_title("Accelerator saturation: throughput vs batch size")
+ax.legend(frameon=False)
+fig.tight_layout(); fig.savefig(FIG / "fig2_batch_sweep.png"); plt.close(fig)
+
+# ── Fig 3: step time vs compile/dispatch overhead ────────────────────────────
+names = ["cpu_1core_jax", "cpu_10core_jax", "cpu_10core_torch", "gpu_mps_torch"]
+labels = ["CPU 1c\nJAX", "CPU 10c\nJAX", "CPU 10c\nTorch", "M4 GPU\nTorch"]
+p50 = [load(n)["p50_step_ms"] for n in names]
+comp = [load(n)["compile_overhead_s"] * 1e3 for n in names]
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(7.2, 3.3))
+b1 = a1.bar(labels, p50, color=BLUE, width=0.6)
+bar_labels(a1, b1, lambda v: f"{v:.2f}")
+a1.set_ylabel("p50 step time (ms)"); a1.set_title("Steady-state step time")
+b2 = a2.bar(labels, comp, color=VERM, width=0.6)
+bar_labels(a2, b2, lambda v: f"{v:.0f}")
+a2.set_ylabel("first-step / compile (ms)"); a2.set_title("Compile + warmup overhead")
+fig.tight_layout(); fig.savefig(FIG / "fig3_step_compile.png"); plt.close(fig)
+
+# ── Fig 4: node telemetry (CPU util + RSS) ───────────────────────────────────
+runs = [("CPU 1-core JAX", "cpu_1core_jax", BLUE),
+        ("CPU 10-core JAX", "cpu_10core_jax", ORANGE),
+        ("M4 GPU Torch bs=512", "gpu_mps_torch", GREEN)]
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(7.2, 3.3))
+for label, name, c in runs:
+    s = load(name)["telemetry"]["series"]
+    a1.plot([p[0] for p in s], [p[1] for p in s], color=c, lw=1.8, label=label)
+a1.set_xlabel("wall time (s)"); a1.set_ylabel("node CPU util (%)")
+a1.set_ylim(0, 100); a1.set_title("CPU utilization during training")
+a1.legend(frameon=False, fontsize=8)
+rss = [load(n)["telemetry"]["rss_peak_mb"] for _, n, _ in runs]
+b = a2.bar(["CPU\n1-core", "CPU\n10-core", "M4 GPU\nbs=512"], rss,
+           color=[r[2] for r in runs], width=0.6)
+bar_labels(a2, b, lambda v: f"{v:.0f}")
+a2.set_ylabel("peak RSS (MB)"); a2.set_title("Peak process memory")
+fig.tight_layout(); fig.savefig(FIG / "fig4_telemetry.png"); plt.close(fig)
+
+print("figures written to", FIG)

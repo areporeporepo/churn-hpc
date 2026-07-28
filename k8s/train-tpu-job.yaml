@@ -1,0 +1,48 @@
+# Phase 1 — Reusable K8s manifest: TPU v5e slice training job (GKE).
+# Third rung of the scaling matrix (distributed / TPU scaling).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: churn-train-tpu
+  labels:
+    app: churn-hpc
+    scale-step: tpu-slice
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        cloud.google.com/gke-tpu-accelerator: tpu-v5-lite-podslice
+        cloud.google.com/gke-tpu-topology: 2x2
+      containers:
+        - name: trainer
+          image: us-docker.pkg.dev/PROJECT/churn-hpc/train:tpu-0.1.0
+          args: ["--data", "/data/Churn_Dataset.csv", "--backend", "tpu",
+                 "--batch-size", "4096", "--epochs", "50",
+                 "--out", "/results/tpu.json"]
+          resources:
+            requests:
+              cpu: "24"
+              memory: 48Gi
+              google.com/tpu: 4      # physical TPU chip count (v5e 2x2)
+            limits:
+              cpu: "24"
+              memory: 48Gi
+              google.com/tpu: 4
+          volumeMounts:
+            - name: dataset
+              mountPath: /data
+              readOnly: true
+            - name: results
+              mountPath: /results
+      volumes:
+        - name: dataset
+          csi:
+            driver: gcsfuse.csi.storage.gke.io   # cloud-bucket data tier
+            volumeAttributes:
+              bucketName: churn-hpc-datasets
+              mountOptions: "implicit-dirs,file-cache:max-size-mb:512"
+        - name: results
+          persistentVolumeClaim:
+            claimName: churn-results-pvc

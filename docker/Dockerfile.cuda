@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+# Phase 1 — Immutable environment: CUDA + XLA training image.
+# All system deps and libraries are baked here; NOTHING is installed on running nodes.
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    XLA_PYTHON_CLIENT_PREALLOCATE=false
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-venv python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pinned, reproducible dependency set (compiled once at build time).
+COPY docker/requirements-cuda.txt /opt/requirements.txt
+RUN python3.11 -m pip install --no-cache-dir -r /opt/requirements.txt
+
+WORKDIR /workspace
+COPY src/ /workspace/src/
+COPY scripts/ /workspace/scripts/
+
+# Non-root runtime user (cluster security policy).
+RUN useradd -m -u 1000 trainer
+USER trainer
+
+ENTRYPOINT ["python3.11", "src/train_jax.py"]

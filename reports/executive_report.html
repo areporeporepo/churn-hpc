@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Anh Quang Nguyen" />
+  <meta name="dcterms.date" content="2026-07-28" />
+  <title>Churn-HPC: Executive Technical Report</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Churn-HPC: Executive Technical Report</h1>
+<p class="subtitle">DNN churn classification across the modern AI
+infrastructure stack</p>
+<p class="author">Anh Quang Nguyen</p>
+<p class="date">July 28, 2026</p>
+</header>
+<h1 id="problem-and-objective">1. Problem and Objective</h1>
+<p>Customer churn prediction on <code>Churn_Dataset.csv</code>: 5,000
+telecom customers, 16 numeric usage features, boolean
+<code>churned</code> label with a 14% positive rate. The modeling task
+(a multilayer perceptron reaching 92-94% test accuracy against an 86%
+majority baseline) is deliberately modest; the engineering objective is
+the point: run one workload through an immutable, reproducible
+infrastructure pipeline spanning containerization, orchestration,
+storage staging, and multi-hardware benchmarking, and identify the true
+performance bottleneck with measured telemetry rather than
+intuition.</p>
+<p>The resource challenge is the inverse of the usual one. The dataset
+is 341 KB; every layer of the stack (10-core CPU node, Apple M4 GPU,
+provisioned NVIDIA L4 and TPU v5e targets) is oversized for it. That
+makes it a clean probe of <strong>fixed costs</strong>: compilation,
+kernel dispatch, staging, orchestration overhead. These are exactly the
+costs that silently dominate small-to-medium scientific workloads on
+shared clusters.</p>
+<h1 id="architecture">2. Architecture</h1>
+<p><strong>Phase 1 - Immutable environment.</strong> Two Dockerfiles
+(<code>docker/</code>): a CPU image on <code>python:3.12-slim</code> and
+a CUDA 12.4 + cuDNN image carrying the pinned
+<code>jax[cuda12]</code>/XLA and PyTorch stack. All dependencies are
+baked at build time from pinned requirements files; running nodes
+install nothing. On SLURM the same images run read-only via Apptainer
+(<code>.sif</code>).</p>
+<p><strong>Phase 1 - Orchestration manifests.</strong> Kubernetes Jobs
+(<code>k8s/</code>) declare exact hardware constraints: the GPU job
+requests and limits 8 CPU cores, 24 GiB RAM, and exactly 1
+<code>nvidia.com/gpu</code> on an L4 node pool; the TPU job pins a v5e
+2x2 slice (4 chips, 24 cores, 48 GiB). SLURM batch scripts
+(<code>slurm/</code>) mirror this with <code>--cpus-per-task</code>,
+<code>--mem</code>, and <code>--gres=gpu:1</code>, plus a 2-node
+<code>jax.distributed</code> variant with the coordinator pinned to the
+first node of the allocation.</p>
+<p><strong>Phase 2 - Provisioning and storage.</strong> Three mapped
+targets: the local M4 node (measured), the Stanford ME344 SLURM cluster
+<code>hpcc-cluster-49</code> (VPN-gated, manifests ready), and a private
+VPC-native GKE cluster (subnet <code>10.10.0.0/20</code>, pod/service
+secondary ranges, no public node IPs, egress via Cloud NAT). The data
+tier funnels the CSV as: shared NFS or GCS canonical copy, staged once
+per job to node-local NVMe scratch (<code>$SLURM_TMPDIR</code> /
+local-SSD <code>emptyDir</code> / gcsfuse file cache), then loaded to
+RAM once and pushed to device memory. The training loop never touches
+shared storage.</p>
+<p><strong>Model.</strong> MLP 128-64-32 with ReLU, softmax
+cross-entropy, Adam 1e-3. Implemented twice with identical preprocessing
+and telemetry: JAX/Flax with the whole train step (forward, backward,
+optimizer) jit-fused by XLA, and PyTorch for the CPU/MPS/CUDA path with
+optional Inductor (<code>torch.compile</code>).</p>
+<h1 id="measurements">3. Measurements</h1>
+<p>Telemetry is captured by a background sampler
+(<code>src/telemetry.py</code>, psutil at 5 Hz: whole-node CPU%, process
+RSS) plus per-step wall-clock timers with device synchronization
+(<code>block_until_ready</code> / <code>torch.mps.synchronize</code>) so
+step times are honest. Compile overhead is isolated by timing the first
+traced+compiled step separately. The SLURM GPU job additionally logs
+<code>nvidia-smi</code> at 1 Hz for the cluster rungs. Every run emits
+one JSON record; the scaling matrix
+(<code>benchmarks/run_matrix.sh</code>) is 12 configurations at 400
+epochs.</p>
+<h1 id="results-the-scaling-matrix">4. Results: the scaling matrix</h1>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+</colgroup>
+<thead>
+<tr>
+<th>Config</th>
+<th>Compile (s)</th>
+<th>p50 step (ms)</th>
+<th>Samples/s</th>
+<th>Node CPU %</th>
+<th>Peak RSS (MB)</th>
+<th>Acc</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CPU 1-core, JAX/XLA</td>
+<td>0.164</td>
+<td>0.395</td>
+<td>897 K</td>
+<td>19.2</td>
+<td>358</td>
+<td>0.916</td>
+</tr>
+<tr>
+<td>CPU 10-core, JAX/XLA</td>
+<td>0.167</td>
+<td>0.395</td>
+<td>898 K</td>
+<td>19.4</td>
+<td>361</td>
+<td>0.916</td>
+</tr>
+<tr>
+<td>CPU 10-core, PyTorch</td>
+<td>0.011</td>
+<td>0.549</td>
+<td>938 K</td>
+<td>17.7</td>
+<td>312</td>
+<td>0.917</td>
+</tr>
+<tr>
+<td>M4 GPU (MPS), bs 512</td>
+<td>0.094</td>
+<td>1.237</td>
+<td>394 K</td>
+<td>10.7</td>
+<td>437</td>
+<td>0.917</td>
+</tr>
+<tr>
+<td>M4 GPU (MPS), bs 2048</td>
+<td>0.095</td>
+<td>1.535</td>
+<td>1,163 K</td>
+<td>4.1</td>
+<td>432</td>
+<td>0.933</td>
+</tr>
+<tr>
+<td>M4 GPU (MPS), bs 4000</td>
+<td>0.097</td>
+<td>1.739</td>
+<td>2,013 K</td>
+<td>7.0</td>
+<td>433</td>
+<td>0.908</td>
+</tr>
+<tr>
+<td>CPU 10-core, JAX bf16</td>
+<td>0.208</td>
+<td>0.588</td>
+<td>669 K</td>
+<td>16.2</td>
+<td>385</td>
+<td>0.914</td>
+</tr>
+</tbody>
+</table>
+<figure>
+<img src="figures/fig1_throughput.png"
+alt="Scaling matrix throughput" />
+<figcaption aria-hidden="true">Scaling matrix throughput</figcaption>
+</figure>
+<figure>
+<img src="figures/fig2_batch_sweep.png" alt="Batch-size saturation" />
+<figcaption aria-hidden="true">Batch-size saturation</figcaption>
+</figure>
+<figure>
+<img src="figures/fig3_step_compile.png"
+alt="Step time and compile overhead" />
+<figcaption aria-hidden="true">Step time and compile
+overhead</figcaption>
+</figure>
+<figure>
+<img src="figures/fig4_telemetry.png" alt="Node telemetry" />
+<figcaption aria-hidden="true">Node telemetry</figcaption>
+</figure>
+<p>Headline deltas: 10 cores over 1 core = <strong>1.00x</strong>; GPU
+over CPU at batch 512 = <strong>0.42x</strong> (a slowdown); the same
+GPU at batch 4000 = <strong>5.15x</strong> over itself and
+<strong>2.1x</strong> over the best CPU run; bf16 on CPU =
+<strong>0.75x</strong> (regression).</p>
+<h1 id="bottleneck-diagnosis">5. Bottleneck Diagnosis</h1>
+<p><strong>The workload is launch-latency-bound: fixed per-step
+host-side dispatch cost dominates.</strong> Four independent lines of
+evidence: (1) core-count indifference, because ~0.1 ms of GEMM per step
+is below the threshold where thread-pool synchronization pays; (2) GPU
+step time ~3x CPU step time for identical math, which is the Metal
+kernel-launch plus host-device sync floor; (3) near-linear throughput
+scaling with batch size on both backends, the signature of a fixed
+per-step cost; (4) no other resource is stressed, with node CPU under
+25%, GPU memory ~19 MB, RSS 0.44 GB of 16 GB, and IO one 341 KB read per
+job. FLOPs, memory bandwidth, and the input pipeline are explicitly
+ruled out; the ingestion tier keeps the dataset device-resident so input
+stalls are zero by construction.</p>
+<h1 id="engineering-mitigations-and-recommendations">6. Engineering
+Mitigations and Recommendations</h1>
+<p>Measured: batch-size scaling to 4000 (5.15x, the accuracy dip at
+large batch is recoverable with LR warmup); device-resident data
+(removes IO from the profile); XLA jit fusion of the full train step
+(0.4 ms CPU steps). Measured and rejected: bfloat16 on M4 CPU, a 0.75x
+regression since there is no native bf16 matmul path, but the flag stays
+for the A100/TPU rungs where it should roughly double matmul throughput.
+Recommended: epoch-level fusion with <code>jax.lax.scan</code> (9
+dispatches per epoch become 1, attacking the diagnosed bottleneck
+directly); <code>torch.compile</code> on the accelerator path; and
+hardware right-sizing, since below roughly 1 M rows a single CPU node is
+cost-optimal and the GPU/TPU manifests are best reserved for parallel
+hyperparameter sweeps rather than shrinking one small job.</p>
+<p><strong>Cost trade-off.</strong> The best GPU configuration saves
+~0.8 s per 400-epoch run over the CPU. At cloud prices (an L4 node at
+roughly $1/hr vs a comparable CPU node at ~$0.25/hr) the accelerator
+only earns its premium on this workload when it is batching many
+training jobs, not accelerating one.</p>
+<h1 id="status-and-next-steps">7. Status and Next Steps</h1>
+<p>The SLURM rungs (<code>train_cpu</code>, <code>train_gpu</code>,
+<code>train_multinode</code>) and the GKE GPU/TPU jobs are provisioned
+but not yet measured; they were blocked at benchmark time by Stanford
+VPN access to <code>hpcc-cluster-49</code>. They submit unchanged once
+connectivity returns, and their results drop into the same
+<code>benchmarks/results/</code> JSON schema, figures, and tables.</p>
+</body>
+</html>

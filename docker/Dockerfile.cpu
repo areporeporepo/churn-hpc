@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1
+# Phase 1 — Immutable environment: CPU baseline image (XLA on CPU).
+# Used for the single-node CPU rung of the scaling matrix and for CI smoke tests.
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+COPY docker/requirements-cpu.txt /opt/requirements.txt
+RUN pip install --no-cache-dir -r /opt/requirements.txt
+
+WORKDIR /workspace
+COPY src/ /workspace/src/
+COPY scripts/ /workspace/scripts/
+
+RUN useradd -m -u 1000 trainer
+USER trainer
+
+ENTRYPOINT ["python", "src/train_jax.py"]

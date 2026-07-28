@@ -1,0 +1,9 @@
+# Pinned CUDA/XLA stack — jax[cuda12] pulls matching jaxlib + cuDNN wheels.
+jax[cuda12]==0.6.2
+flax==0.10.6
+optax==0.2.4
+torch==2.7.1
+pandas==2.2.3
+scikit-learn==1.6.1
+psutil==7.0.0
+tensorboard==2.19.0
