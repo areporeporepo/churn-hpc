@@ -130,6 +130,6 @@ apptainer pull containers/churn-cpu.sif docker://pytorch/pytorch:2.7.1-cuda12.6-
 sbatch slurm/train_cpu_hpcc49.sbatch
 ```
 
-Status: 15 of 16 planned configs measured. The Stanford cluster's single NVIDIA GPU is time-shared and currently held by another tenant; `scripts/watch_gpu_job.sh` is watching, and its results drop into the same tables the moment the chip frees up.
+Status: complete. All three backend classes (CPU, GPU, TPU) are measured across 15 configs; the comparison the analysis rests on is closed. One opportunistic extra remains queued: the Stanford cluster's time-shared NVIDIA GPU, currently held by another tenant with no guaranteed release. `scripts/watch_gpu_job.sh` watches for it, and if it ever runs, its results drop into the same tables as a 16th row. Nothing in the analysis waits on it.
 
 Deliverables: `reports/executive_report.pdf` · `slides/churn_hpc_slides.pdf` · `notebooks/profiling.ipynb` (executed) · `docs/INFRASTRUCTURE.md`.

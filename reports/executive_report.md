@@ -157,12 +157,14 @@ it is batching many training jobs, not accelerating one.
 
 # 7. Status and Next Steps
 
-15 of 16 planned configurations are measured across four architectures (Apple
-M4 CPU/GPU, arm64 Grace, x86 Xeon under SLURM, TPU v5e) and three sites
-(local, Stanford hpcc, Google Cloud). The one open item is the Stanford
-cluster's single NVIDIA GPU, time-shared with other tenants; the job is queued
-with a watch-and-heal loop (`scripts/watch_gpu_job.sh`) that collects results
-into the same JSON schema the moment the GPU frees. The TPU result sharpens
+The study is complete: all three backend classes (CPU, GPU, TPU) are measured
+across 15 configurations, four architectures (Apple M4 CPU/GPU, arm64 Grace,
+x86 Xeon under SLURM, TPU v5e), and three sites (local, Stanford hpcc, Google
+Cloud). One opportunistic extra remains queued and is not load-bearing: the
+Stanford cluster's single NVIDIA GPU is time-shared and currently held by
+another tenant with no guaranteed release; a watch-and-heal loop
+(`scripts/watch_gpu_job.sh`) collects its results into the same JSON schema
+if it ever schedules. The TPU result sharpens
 the recommendation rather than changing it: accelerators at this workload
 scale are throughput machines for batched/parallel work, not latency machines
 for one small job, and the cost-optimal single-job target remains a CPU node
