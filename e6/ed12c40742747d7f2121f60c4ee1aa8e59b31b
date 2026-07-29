@@ -1,0 +1,32 @@
+src/data.py
+  s_45f5215dfdf8ec::t_9926d720cce5cf 5-7,10-27,31-38
+docker/Dockerfile.arm64
+  s_45f5215dfdf8ec::t_edad57276524df 1-20
+k8s/hpcc/train-cpu-job.yaml
+  s_45f5215dfdf8ec::t_5258eb0eb1c533 4-23,25-28,34-35,37-49
+  s_45f5215dfdf8ec::t_0d11a776940f93 1-3,24,29-33,36
+k8s/hpcc/train-gpu-job.yaml
+  s_45f5215dfdf8ec::t_05642cb93ff05e 2-5,24,29-32
+  s_45f5215dfdf8ec::t_1672de841d0245 1,6-23,25-28,33-55
+src/telemetry.py
+  s_45f5215dfdf8ec::t_65863e66e00150 20
+  s_45f5215dfdf8ec::t_ba3b433952a4de 35-36
+  s_45f5215dfdf8ec::t_2535bdce2ebdf2 1-5,9-12
+  s_45f5215dfdf8ec::t_2760d01092ff14 41-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e6ed12c40742747d7f2121f60c4ee1aa8e59b31b",
+  "prompts": {},
+  "sessions": {
+    "s_45f5215dfdf8ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9f012dd-b82d-4f6f-935f-0d4cc87d6a27",
+        "model": "claude-fable-5"
+      },
+      "human_author": "anh nguyen <anh.nqqq@icloud.com>"
+    }
+  }
+}
