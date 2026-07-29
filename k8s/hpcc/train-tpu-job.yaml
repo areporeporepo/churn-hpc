@@ -30,8 +30,8 @@ spec:
             - |
               set -e
               T0=$SECONDS
-              pip install --no-cache-dir -q "jax[tpu]==0.6.2" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
-              pip install --no-cache-dir -q flax==0.10.6 optax==0.2.4 psutil==7.0.0
+              pip install --no-cache-dir -q "jax[tpu]==0.11.0" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+              pip install --no-cache-dir -q flax==0.12.8 optax==0.2.8 psutil==7.0.0
               echo "===BOOTSTRAP $(($SECONDS-T0))s==="
               python -c "import jax; print('===TPU===', jax.devices())"
               for cfg in "512 tpu-v5e-bs512" "4000 tpu-v5e-bs4000" "16384 tpu-v5e-bs16384"; do

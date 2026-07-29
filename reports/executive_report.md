@@ -65,15 +65,23 @@ the cluster rungs. Every run emits one JSON record; the scaling matrix
 
 # 4. Results: the scaling matrix
 
-| Config | Compile (s) | p50 step (ms) | Samples/s | Node CPU % | Peak RSS (MB) | Acc |
-|---|---|---|---|---|---|---|
-| CPU 1-core, JAX/XLA | 0.164 | 0.395 | 897 K | 19.2 | 358 | 0.916 |
-| CPU 10-core, JAX/XLA | 0.167 | 0.395 | 898 K | 19.4 | 361 | 0.916 |
-| CPU 10-core, PyTorch | 0.011 | 0.549 | 938 K | 17.7 | 312 | 0.917 |
-| M4 GPU (MPS), bs 512 | 0.094 | 1.237 | 394 K | 10.7 | 437 | 0.917 |
-| M4 GPU (MPS), bs 2048 | 0.095 | 1.535 | 1,163 K | 4.1 | 432 | 0.933 |
-| M4 GPU (MPS), bs 4000 | 0.097 | 1.739 | 2,013 K | 7.0 | 433 | 0.908 |
-| CPU 10-core, JAX bf16 | 0.208 | 0.588 | 669 K | 16.2 | 385 | 0.914 |
+| Config | Site | Compile (s) | p50 step (ms) | Samples/s | Acc |
+|---|---|---|---|---|---|
+| CPU 1-core, JAX/XLA | M4 | 0.164 | 0.395 | 897 K | 0.916 |
+| CPU 10-core, JAX/XLA | M4 | 0.167 | 0.395 | 898 K | 0.916 |
+| CPU 10-core, PyTorch | M4 | 0.011 | 0.549 | 938 K | 0.917 |
+| GPU (MPS), bs 512 | M4 | 0.094 | 1.237 | 394 K | 0.917 |
+| GPU (MPS), bs 4000 | M4 | 0.097 | 1.739 | 2,013 K | 0.908 |
+| CPU 10-core, JAX bf16 | M4 | 0.208 | 0.588 | 669 K | 0.914 |
+| CPU Grace 1c, bs 512 | hpcc K8s | 0.020 | 2.314 | 196 K | 0.921 |
+| CPU Grace 32c, bs 512 | hpcc K8s | 0.034 | 17.188 | 27.8 K | 0.921 |
+| CPU Xeon 1c, bs 512 | hpcc SLURM | 0.142 | 4.463 | 114 K | 0.913 |
+| CPU Xeon 8c, bs 512 | hpcc SLURM | 0.087 | 3.631 | 140 K | 0.914 |
+| CPU Xeon 32c, bs 512 | hpcc SLURM | 0.127 | 4.513 | 107 K | 0.918 |
+| CPU Xeon 8c, bs 4000 | hpcc SLURM | 0.088 | 7.193 | 540 K | 0.916 |
+| TPU v5e, bs 512 | GKE | 0.378 | 2.088 | 189 K | 0.917 |
+| TPU v5e, bs 4000 | GKE | 0.421 | 2.144 | 789 K | 0.919 |
+| TPU v5e, bs 16384 | GKE | 0.410 | 2.148 | 3,216 K | 0.919 |
 
 ![Scaling matrix throughput](figures/fig1_throughput.png)
 
@@ -88,20 +96,31 @@ Headline deltas: 10 cores over 1 core = **1.00x**; GPU over CPU at batch 512 =
 **2.1x** over the best CPU run; bf16 on CPU = **0.75x** (regression).
 
 **Cluster validation (measured after VPN access returned).** The identical
-trainer ran on the Stanford hpcc Kubernetes cluster via the `k8s/hpcc/`
-manifests: pinned aarch64 PyTorch 2.7.1 wheels in an ephemeral
-`python:3.12-slim` container (the official images are amd64-only and the worker
-is a 72-core arm64 Grace-class node), code and dataset delivered as ConfigMaps,
-36 s environment bootstrap. Results: 1 core at batch 512 = 196 K samples/s;
-32 cores at batch 512 = 27.8 K samples/s, a **7.1x slowdown from adding 31
-cores**; 32 cores at batch 4000 = 111 K samples/s. The oversubscription
-pathology predicted by the local matrix reproduces on a second CPU
-architecture, more severely: OpenMP barrier costs on sub-millisecond GEMMs
-scale with thread count, so parallelism is negative-value here
-(figure `fig5_cluster.png`). The cluster's single NVIDIA GPU is time-shared;
-the GPU job is queued and reports into the same schema when scheduled.
+trainer then ran on three additional real targets:
+
+*Stanford hpcc Kubernetes (arm64 Grace-class node, 72 cores).* Pinned aarch64
+PyTorch 2.7.1 wheels in an ephemeral `python:3.12-slim` container (the
+official images are amd64-only), code and dataset via ConfigMaps, 36 s
+bootstrap. 1 core at batch 512 = 196 K samples/s; 32 cores = 27.8 K, a
+**7.1x slowdown from adding 31 cores**.
+
+*Stanford hpcc SLURM (32-core x86 Xeon head node).* SLURM 22.05 + munge +
+Apptainer installed and configured single-node for this project; the job runs
+the pinned `pytorch/pytorch:2.7.1` image as a read-only 3.2 GB `.sif` and
+stages the CSV to node-local scratch. 1 core = 114 K samples/s; 8 cores =
+140 K; 32 cores = 107 K at **99.7% node utilization** - every core busy,
+throughput below a single core. Utilization is not throughput.
+
+*Google Cloud TPU v5e 2x2 slice (GKE Autopilot, class-tpu-cluster).* Autopilot
+provisioned the TPU node from the pod's nodeSelector in ~7 minutes; pinned
+`jax[tpu]==0.11.0` bootstrap in 25 s; all 4 chips visible to JAX. Step time is
+**constant at ~2.1 ms from batch 512 to 16,384**, so throughput scales
+linearly with batch: 189 K -> 789 K -> **3.22 M samples/s**, the best measured
+figure in the matrix, at 0.919 test accuracy.
 
 ![Cluster rungs](figures/fig5_cluster.png)
+
+![Backend comparison](figures/fig6_backends.png)
 
 # 5. Bottleneck Diagnosis
 
@@ -138,8 +157,13 @@ it is batching many training jobs, not accelerating one.
 
 # 7. Status and Next Steps
 
-The SLURM rungs (`train_cpu`, `train_gpu`, `train_multinode`) and the GKE
-GPU/TPU jobs are provisioned but not yet measured; they were blocked at
-benchmark time by Stanford VPN access to `hpcc-cluster-49`. They submit
-unchanged once connectivity returns, and their results drop into the same
-`benchmarks/results/` JSON schema, figures, and tables.
+15 of 16 planned configurations are measured across four architectures (Apple
+M4 CPU/GPU, arm64 Grace, x86 Xeon under SLURM, TPU v5e) and three sites
+(local, Stanford hpcc, Google Cloud). The one open item is the Stanford
+cluster's single NVIDIA GPU, time-shared with other tenants; the job is queued
+with a watch-and-heal loop (`scripts/watch_gpu_job.sh`) that collects results
+into the same JSON schema the moment the GPU frees. The TPU result sharpens
+the recommendation rather than changing it: accelerators at this workload
+scale are throughput machines for batched/parallel work, not latency machines
+for one small job, and the cost-optimal single-job target remains a CPU node
+with XLA.

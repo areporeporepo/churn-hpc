@@ -99,29 +99,64 @@ bar_labels(a2, b, lambda v: f"{v:.0f}")
 a2.set_ylabel("peak RSS (MB)"); a2.set_title("Peak process memory")
 fig.tight_layout(); fig.savefig(FIG / "fig4_telemetry.png"); plt.close(fig)
 
-# ── Fig 5: real cluster rungs (Stanford hpcc, arm64 Grace node) ──────────────
+# ── Fig 5: cluster CPU rungs — thread scaling futility on two architectures ──
 def maybe(name):
     p = RES / f"{name}.json"
     return json.load(open(p)) if p.exists() else None
 
-cluster = [("Grace 1-core\nbs512", maybe("cpu_cluster_1c_bs512"), ORANGE),
-           ("Grace 32-core\nbs512", maybe("cpu_cluster_32c_bs512"), ORANGE),
-           ("Grace 32-core\nbs4000", maybe("cpu_cluster_32c_bs4000"), ORANGE),
-           ("H100 GPU\nbs512", maybe("gpu_cluster_bs512"), GREEN),
-           ("H100 GPU\nbs4000", maybe("gpu_cluster_bs4000"), GREEN)]
+cluster = [("Grace 1c\n(K8s)", maybe("cpu_cluster_1c_bs512"), ORANGE),
+           ("Grace 32c\n(K8s)", maybe("cpu_cluster_32c_bs512"), ORANGE),
+           ("Xeon 1c\n(SLURM)", maybe("slurm_1c_bs512"), VERM),
+           ("Xeon 8c\n(SLURM)", maybe("slurm_8c_bs512"), VERM),
+           ("Xeon 32c\n(SLURM)", maybe("slurm_32c_bs512"), VERM)]
 cluster = [(l, r, c) for l, r, c in cluster if r]
 if cluster:
     m4_best = load("cpu_10core_torch")["samples_per_sec"] / 1e6
     fig, ax = plt.subplots(figsize=(7.2, 3.6))
     bars = ax.bar([c[0] for c in cluster], [c[1]["samples_per_sec"] / 1e6 for c in cluster],
                   color=[c[2] for c in cluster], width=0.6)
-    bar_labels(ax, bars, lambda v: f"{v:.2f}M" if v >= 0.1 else f"{v*1e3:.0f}K")
+    for b, (_, r, _) in zip(bars, cluster):
+        v = r["samples_per_sec"] / 1e6
+        cpu = r["telemetry"].get("cpu_util_mean_pct")
+        ax.annotate(f"{v*1e3:.0f}K\n({cpu:.0f}% util)", (b.get_x() + b.get_width() / 2, v),
+                    ha="center", va="bottom", fontsize=8.5, fontweight="bold")
     ax.axhline(m4_best, color=BLUE, lw=1.5, ls="--")
     ax.annotate(f"local M4 best (torch CPU): {m4_best:.2f}M", (0.02, m4_best),
                 xycoords=("axes fraction", "data"), xytext=(0, 4),
                 textcoords="offset points", fontsize=9, color=BLUE)
+    ax.set_ylim(0, m4_best * 1.18)
     ax.set_ylabel("Throughput (M samples/sec)")
-    ax.set_title("Stanford hpcc cluster rungs (K8s, arm64 Grace node), PyTorch 2.7.1")
+    ax.set_title("Cluster CPU rungs at batch 512: more cores, same or less throughput")
     fig.tight_layout(); fig.savefig(FIG / "fig5_cluster.png"); plt.close(fig)
+
+# ── Fig 6: the backend comparison (CPU vs GPU vs TPU peak + step-time flatness)
+tpu512, tpu4k, tpu16k = maybe("tpu_v5e_bs512"), maybe("tpu_v5e_bs4000"), maybe("tpu_v5e_bs16384")
+if tpu16k:
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(9.6, 3.8))
+    peaks = [("CPU\nM4 10c\nbs512", load("cpu_10core_torch"), BLUE),
+             ("CPU\nXeon SLURM\n8c bs4000", maybe("slurm_8c_bs4000"), BLUE),
+             ("GPU\nM4 MPS\nbs4000", load("gpu_mps_bs4000"), GREEN),
+             ("TPU\nv5e slice\nbs16384", tpu16k, ORANGE)]
+    peaks = [(l, r, c) for l, r, c in peaks if r]
+    bars = a1.bar([p[0] for p in peaks], [p[1]["samples_per_sec"] / 1e6 for p in peaks],
+                  color=[p[2] for p in peaks], width=0.6)
+    bar_labels(a1, bars, lambda v: f"{v:.2f}M")
+    a1.set_ylabel("Peak throughput (M samples/sec)")
+    a1.set_title("Best measured config per backend")
+
+    bss = [512, 4000, 16384]
+    tpu_p50 = [tpu512["p50_step_ms"], tpu4k["p50_step_ms"], tpu16k["p50_step_ms"]]
+    cpu_p50 = [load("cpu_10core_jax")["p50_step_ms"], load("cpu_10core_jax_bs4000")["p50_step_ms"], None]
+    gpu_p50 = [load("gpu_mps_bs512")["p50_step_ms"], load("gpu_mps_bs4000")["p50_step_ms"], None]
+    a2.plot(bss, tpu_p50, "-o", color=ORANGE, lw=2, ms=7, label="TPU v5e (XLA)")
+    a2.plot(bss[:2], cpu_p50[:2], "-o", color=BLUE, lw=2, ms=7, label="CPU M4 (XLA)")
+    a2.plot(bss[:2], gpu_p50[:2], "-o", color=GREEN, lw=2, ms=7, label="GPU M4 (MPS)")
+    a2.set_xscale("log"); a2.set_xticks(bss); a2.set_xticklabels(bss)
+    a2.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+    a2.set_ylim(0)
+    a2.set_xlabel("Batch size"); a2.set_ylabel("p50 step time (ms)")
+    a2.set_title("Step time vs batch: TPU is flat (latency-bound)")
+    a2.legend(frameon=False, fontsize=9)
+    fig.tight_layout(); fig.savefig(FIG / "fig6_backends.png"); plt.close(fig)
 
 print("figures written to", FIG)
