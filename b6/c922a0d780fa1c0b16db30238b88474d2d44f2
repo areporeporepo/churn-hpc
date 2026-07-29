@@ -1,0 +1,24 @@
+k8s/hpcc/train-tpu-job.yaml
+  s_45f5215dfdf8ec::t_b6570f2f7ec98f 1-53
+slurm/train_cpu_hpcc49.sbatch
+  s_45f5215dfdf8ec::t_3efaa000a117a7 1-30
+scripts/watch_gpu_job.sh
+  s_45f5215dfdf8ec::t_e4476207991f2e 39-40
+  s_45f5215dfdf8ec::t_af92025030d87e 20-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b6c922a0d780fa1c0b16db30238b88474d2d44f2",
+  "prompts": {},
+  "sessions": {
+    "s_45f5215dfdf8ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9f012dd-b82d-4f6f-935f-0d4cc87d6a27",
+        "model": "claude-fable-5"
+      },
+      "human_author": "anh nguyen <anh.nqqq@icloud.com>"
+    }
+  }
+}
