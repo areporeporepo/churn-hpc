@@ -1,0 +1,19 @@
+scripts/watch_gpu_job.sh
+  s_45f5215dfdf8ec::t_27fe3638cc1639 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b76ffa000a2ac02b06e3978225bd4186cc1bd074",
+  "prompts": {},
+  "sessions": {
+    "s_45f5215dfdf8ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9f012dd-b82d-4f6f-935f-0d4cc87d6a27",
+        "model": "claude-fable-5"
+      },
+      "human_author": "anh nguyen <anh.nqqq@icloud.com>"
+    }
+  }
+}
