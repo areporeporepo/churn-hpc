@@ -87,6 +87,22 @@ Headline deltas: 10 cores over 1 core = **1.00x**; GPU over CPU at batch 512 =
 **0.42x** (a slowdown); the same GPU at batch 4000 = **5.15x** over itself and
 **2.1x** over the best CPU run; bf16 on CPU = **0.75x** (regression).
 
+**Cluster validation (measured after VPN access returned).** The identical
+trainer ran on the Stanford hpcc Kubernetes cluster via the `k8s/hpcc/`
+manifests: pinned aarch64 PyTorch 2.7.1 wheels in an ephemeral
+`python:3.12-slim` container (the official images are amd64-only and the worker
+is a 72-core arm64 Grace-class node), code and dataset delivered as ConfigMaps,
+36 s environment bootstrap. Results: 1 core at batch 512 = 196 K samples/s;
+32 cores at batch 512 = 27.8 K samples/s, a **7.1x slowdown from adding 31
+cores**; 32 cores at batch 4000 = 111 K samples/s. The oversubscription
+pathology predicted by the local matrix reproduces on a second CPU
+architecture, more severely: OpenMP barrier costs on sub-millisecond GEMMs
+scale with thread count, so parallelism is negative-value here
+(figure `fig5_cluster.png`). The cluster's single NVIDIA GPU is time-shared;
+the GPU job is queued and reports into the same schema when scheduled.
+
+![Cluster rungs](figures/fig5_cluster.png)
+
 # 5. Bottleneck Diagnosis
 
 **The workload is launch-latency-bound: fixed per-step host-side dispatch cost

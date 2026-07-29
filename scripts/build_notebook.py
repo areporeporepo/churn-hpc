@@ -82,7 +82,9 @@ The matrix is unambiguous:
 - **The GPU only wins when the batch grows** (2.01M samples/s at batch 4000, 5.2x its own small-batch rate): larger batches amortize the launch overhead.
 - **CPU utilization never exceeded ~20% of the node** and peak RSS was ~0.4 GB: neither compute nor memory saturates.
 
-**Primary bottleneck: per-step dispatch/launch overhead (host-side), not FLOPs, not memory bandwidth, not IO.** The workload is *launch-latency-bound*. Mitigations (validated or recommended) are in the README: larger batches (validated, 5.2x), epoch-level jit/`jax.lax.scan` to fuse the whole epoch into one XLA computation, bfloat16 (measured a *slowdown* on M4 CPU: no native bf16 units, cast overhead only), and keeping this workload class on CPU unless batches are >=2K."""),
+**Primary bottleneck: per-step dispatch/launch overhead (host-side), not FLOPs, not memory bandwidth, not IO.** The workload is *launch-latency-bound*. Mitigations (validated or recommended) are in the README: larger batches (validated, 5.2x), epoch-level jit/`jax.lax.scan` to fuse the whole epoch into one XLA computation, bfloat16 (measured a *slowdown* on M4 CPU: no native bf16 units, cast overhead only), and keeping this workload class on CPU unless batches are >=2K.
+
+**Cluster replication (rows `cpu-cluster-*` above):** the same trainer on the Stanford hpcc K8s cluster's 72-core arm64 Grace node reproduces the diagnosis in extreme form: 32 threads are 7.1x *slower* than 1 thread at batch 512 (27.8K vs 196K samples/s): OpenMP barrier costs on sub-millisecond GEMMs make parallelism negative-value. See `reports/figures/fig5_cluster.png`."""),
 ]
 
 out = pathlib.Path(__file__).resolve().parents[1] / "notebooks" / "profiling.ipynb"

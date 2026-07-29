@@ -99,4 +99,29 @@ bar_labels(a2, b, lambda v: f"{v:.0f}")
 a2.set_ylabel("peak RSS (MB)"); a2.set_title("Peak process memory")
 fig.tight_layout(); fig.savefig(FIG / "fig4_telemetry.png"); plt.close(fig)
 
+# ── Fig 5: real cluster rungs (Stanford hpcc, arm64 Grace node) ──────────────
+def maybe(name):
+    p = RES / f"{name}.json"
+    return json.load(open(p)) if p.exists() else None
+
+cluster = [("Grace 1-core\nbs512", maybe("cpu_cluster_1c_bs512"), ORANGE),
+           ("Grace 32-core\nbs512", maybe("cpu_cluster_32c_bs512"), ORANGE),
+           ("Grace 32-core\nbs4000", maybe("cpu_cluster_32c_bs4000"), ORANGE),
+           ("H100 GPU\nbs512", maybe("gpu_cluster_bs512"), GREEN),
+           ("H100 GPU\nbs4000", maybe("gpu_cluster_bs4000"), GREEN)]
+cluster = [(l, r, c) for l, r, c in cluster if r]
+if cluster:
+    m4_best = load("cpu_10core_torch")["samples_per_sec"] / 1e6
+    fig, ax = plt.subplots(figsize=(7.2, 3.6))
+    bars = ax.bar([c[0] for c in cluster], [c[1]["samples_per_sec"] / 1e6 for c in cluster],
+                  color=[c[2] for c in cluster], width=0.6)
+    bar_labels(ax, bars, lambda v: f"{v:.2f}M" if v >= 0.1 else f"{v*1e3:.0f}K")
+    ax.axhline(m4_best, color=BLUE, lw=1.5, ls="--")
+    ax.annotate(f"local M4 best (torch CPU): {m4_best:.2f}M", (0.02, m4_best),
+                xycoords=("axes fraction", "data"), xytext=(0, 4),
+                textcoords="offset points", fontsize=9, color=BLUE)
+    ax.set_ylabel("Throughput (M samples/sec)")
+    ax.set_title("Stanford hpcc cluster rungs (K8s, arm64 Grace node), PyTorch 2.7.1")
+    fig.tight_layout(); fig.savefig(FIG / "fig5_cluster.png"); plt.close(fig)
+
 print("figures written to", FIG)

@@ -79,6 +79,26 @@ Apple M4, 10 cores, 16 GB; JAX 0.11/XLA, PyTorch 2.13):
 | M4 GPU (MPS), batch 4000 | 0.097 | 1.739 | 503 | **2,013 K** | 7.0 | 433 | 0.908 |
 | CPU 10-core, JAX bf16 | 0.208 | 0.588 | 1,307 | 669 K | 16.2 | 385 | 0.914 |
 
+**Real cluster rungs (Stanford hpcc K8s, measured July 28).** With the VPN back,
+the same trainer ran on the actual cluster via `k8s/hpcc/` manifests. The worker
+`hpcc-pilot` turned out to be a 72-core arm64 Grace-class node with 1 NVIDIA GPU
+(shared, single tenant at a time). PyTorch 2.7.1 pinned aarch64 wheels,
+zero installs on the node:
+
+| Config (cluster) | p50 step (ms) | Samples/s | Test acc |
+|---|---|---|---|
+| Grace 1-core, bs 512 | 2.31 | 196 K | 0.921 |
+| Grace 32-core, bs 512 | 17.19 | **27.8 K** | 0.921 |
+| Grace 32-core, bs 4000 | 34.81 | 111 K | 0.919 |
+
+The cluster's 32-thread run is **7.1x slower than its own single thread** at
+batch 512: OpenMP fork/join and barrier costs on a ~0.3 ms GEMM turn extra cores
+into pure overhead. This is the launch-latency diagnosis reproduced on a second
+architecture (arm64 Grace vs Apple M4), in its most extreme form
+(`reports/figures/fig5_cluster.png`). The cluster GPU rung
+(`churn-train-gpu`, 1x NVIDIA on hpcc-pilot) is queued behind another tenant's
+allocation and drops into the same tables when it runs.
+
 Key deltas (figures in `reports/figures/`, full 12-config table in the notebook):
 
 - **1 core -> 10 cores: 1.00x.** Identical throughput (897 K vs 898 K samples/s).
