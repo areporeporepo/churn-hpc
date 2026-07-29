@@ -1,0 +1,19 @@
+README.md
+  s_45f5215dfdf8ec::t_be457a8be93a38 1-11,16-25,43-45,47,52,56,72-84,88-99,103-111,126,128,133,135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e1a76c5723f90ffef54ba954e2ff88156b56924a",
+  "prompts": {},
+  "sessions": {
+    "s_45f5215dfdf8ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9f012dd-b82d-4f6f-935f-0d4cc87d6a27",
+        "model": "claude-fable-5"
+      },
+      "human_author": "anh nguyen <anh.nqqq@icloud.com>"
+    }
+  }
+}
