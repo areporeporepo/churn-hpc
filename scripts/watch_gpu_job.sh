@@ -17,11 +17,14 @@ remote() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$HEAD" \
   "export KUBECONFIG=~/student49.kubeconfig; $*" 2>&1; }
 
 while true; do
-  line=$(remote "kubectl get pods -l app=churn-hpc --no-headers" | grep churn-train-gpu || true)
-  st=$(echo "$line" | awk '{print $3}')
-
-  if [ -z "$st" ]; then
-    st="NoPod"
+  raw=$(remote "kubectl get pods -l app=churn-hpc --no-headers")
+  if echo "$raw" | grep -qiE "refused|unable to connect|timed out|error from server|no route"; then
+    st="ApiDown"          # transient control-plane/VPN flake: never resubmit on this
+    line="$raw"
+  else
+    line=$(echo "$raw" | grep churn-train-gpu || true)
+    st=$(echo "$line" | awk '{print $3}')
+    [ -z "$st" ] && st="NoPod"
   fi
   if [ "$st" != "$prev" ]; then
     echo "GPU JOB: $st"
@@ -32,6 +35,8 @@ while true; do
     Completed)
       echo "GPU DONE: $line"
       exit 0
+      ;;
+    ApiDown)
       ;;
     Error|Failed|CrashLoopBackOff|ImagePullBackOff|NoPod)
       if [ "$resubmits" -ge "$MAX_RESUBMITS" ]; then
