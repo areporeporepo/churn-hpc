@@ -1,0 +1,23 @@
+reports/executive_report.md
+  s_45f5215dfdf8ec::t_af776085f96fa5 160-167
+README.md
+  s_45f5215dfdf8ec::t_49419b83a2b2dd 133
+reports/executive_report.html
+  s_45f5215dfdf8ec::t_2e5a89e64d35bc 325-336
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b9b49204569e5f486fe8c15ca0ec46edd8412eb7",
+  "prompts": {},
+  "sessions": {
+    "s_45f5215dfdf8ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9f012dd-b82d-4f6f-935f-0d4cc87d6a27",
+        "model": "claude-fable-5"
+      },
+      "human_author": "anh nguyen <anh.nqqq@icloud.com>"
+    }
+  }
+}
