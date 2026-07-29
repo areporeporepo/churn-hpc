@@ -1,8 +1,15 @@
-"""Native node telemetry: samples CPU utilization and RSS in a background thread."""
+"""Native node telemetry: samples CPU utilization and RSS in a background thread.
+
+Degrades to a no-op sampler when psutil is unavailable (e.g. inside a stock
+framework image), so trainers never need a runtime install.
+"""
 import threading
 import time
 
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 
 class NodeSampler:
@@ -10,7 +17,7 @@ class NodeSampler:
         self.interval = interval
         self.samples = []          # (t, cpu_percent, rss_bytes)
         self._stop = threading.Event()
-        self._proc = psutil.Process()
+        self._proc = psutil.Process() if psutil else None
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def _run(self):
@@ -25,12 +32,14 @@ class NodeSampler:
             ))
 
     def __enter__(self):
-        self._thread.start()
+        if psutil:
+            self._thread.start()
         return self
 
     def __exit__(self, *exc):
         self._stop.set()
-        self._thread.join()
+        if self._thread.is_alive():
+            self._thread.join()
 
     def summary(self):
         if not self.samples:

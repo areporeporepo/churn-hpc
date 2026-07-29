@@ -1,0 +1,49 @@
+# Real-cluster rung: 32-core CPU slice of hpcc-pilot (72-core arm64 Grace node).
+# Same torch 2.7.1 pinned via aarch64 +cpu wheels; see GPU manifest for why the
+# env is a pip bootstrap rather than the amd64-only official image.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: churn-train-cpu
+  labels:
+    app: churn-hpc
+    scale-step: cluster-cpu
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: churn-hpc
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: hpcc-pilot
+      containers:
+        - name: trainer
+          image: python:3.12-slim
+          command: ["bash", "-lc"]
+          args:
+            - |
+              set -e
+              T0=$SECONDS
+              pip install --no-cache-dir -q torch==2.7.1 --index-url https://download.pytorch.org/whl/cpu
+              pip install --no-cache-dir -q numpy==2.2.6 psutil==7.0.0
+              echo "===BOOTSTRAP $(($SECONDS-T0))s==="
+              for cfg in "1 512 cpu-cluster-1c-bs512" "32 512 cpu-cluster-32c-bs512" "32 4000 cpu-cluster-32c-bs4000"; do
+                set -- $cfg
+                python /code/train_torch.py --data /data/Churn_Dataset.csv --device cpu \
+                  --threads $1 --batch-size $2 --epochs 400 --label $3 --out /tmp/$3.json
+              done
+              for f in /tmp/cpu-cluster-*.json; do echo "===RESULT $f==="; cat $f; echo; done
+          resources:
+            requests: { cpu: "32", memory: 16Gi }
+            limits:   { cpu: "32", memory: 16Gi }
+          volumeMounts:
+            - { name: code, mountPath: /code, readOnly: true }
+            - { name: dataset, mountPath: /data, readOnly: true }
+      volumes:
+        - name: code
+          configMap: { name: churn-src }
+        - name: dataset
+          configMap: { name: churn-data }

@@ -1,0 +1,55 @@
+# Real-cluster rung: Stanford hpcc K8s (ns-student49), 1 NVIDIA GPU on hpcc-pilot.
+# hpcc-pilot is an arm64 (Grace-class) node; the official pytorch/pytorch Docker
+# images are amd64-only, so the environment is a pinned pip bootstrap of the
+# aarch64 cu128 wheels inside the ephemeral container (pinned versions, no node
+# mutation). docker/Dockerfile.arm64 bakes the identical env for registry use.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: churn-train-gpu
+  labels:
+    app: churn-hpc
+    scale-step: cluster-gpu
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: churn-hpc
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: trainer
+          image: python:3.12-slim
+          command: ["bash", "-lc"]
+          args:
+            - |
+              set -e
+              T0=$SECONDS
+              pip install --no-cache-dir -q torch==2.7.1 --index-url https://download.pytorch.org/whl/cu128
+              pip install --no-cache-dir -q numpy==2.2.6 psutil==7.0.0
+              echo "===BOOTSTRAP $(($SECONDS-T0))s==="
+              echo "===GPU===" && nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
+              nvidia-smi --query-gpu=timestamp,utilization.gpu,utilization.memory,memory.used,power.draw \
+                         --format=csv -l 1 > /tmp/smi.csv &
+              SMI=$!
+              for cfg in "512 gpu-cluster-bs512" "4000 gpu-cluster-bs4000"; do
+                set -- $cfg
+                python /code/train_torch.py --data /data/Churn_Dataset.csv --device cuda \
+                  --batch-size $1 --epochs 400 --label $2 --out /tmp/$2.json
+              done
+              kill $SMI || true
+              for f in /tmp/gpu-cluster-*.json; do echo "===RESULT $f==="; cat $f; echo; done
+              echo "===SMI==="; cat /tmp/smi.csv
+          resources:
+            requests: { cpu: "8", memory: 16Gi, nvidia.com/gpu: 1 }
+            limits:   { cpu: "8", memory: 16Gi, nvidia.com/gpu: 1 }
+          volumeMounts:
+            - { name: code, mountPath: /code, readOnly: true }
+            - { name: dataset, mountPath: /data, readOnly: true }
+      volumes:
+        - name: code
+          configMap: { name: churn-src }
+        - name: dataset
+          configMap: { name: churn-data }
