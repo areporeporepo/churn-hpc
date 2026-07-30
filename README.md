@@ -1,14 +1,14 @@
 # churn-hpc
 
-**We benchmarked a churn classifier on four architectures across three sites, and the hardware kept losing to a stopwatch.**
+**We benchmarked a churn classifier on five architectures across three sites, and the hardware kept losing to a stopwatch.**
 
-Ten Apple M4 cores train this model no faster than one. Thirty-two Xeon cores under SLURM run at 99.7% utilization and finish *slower* than a single core. A 72-core Grace node drops to one seventh of its own single-core speed the moment you hand it 32 threads. And a TPU v5e slice, the most expensive chip in the lineup, takes exactly 2.1 milliseconds per step whether the batch holds 512 rows or 16,384.
+Ten Apple M4 cores train this model no faster than one. Thirty-two Xeon cores under SLURM run at 99.7% utilization and finish *slower* than a single core. A 72-core Grace node drops to one seventh of its own single-core speed the moment you hand it 32 threads. An NVIDIA GH200 480GB trains at one tenth the speed of a laptop CPU while its GPU idles at 6% utilization and 0.9% of its HBM. And a TPU v5e slice takes exactly 2.1 milliseconds per step whether the batch holds 512 rows or 16,384.
 
 That last number is the whole story. When step time refuses to move while batch size grows 32x, you are not compute-bound, memory-bound, or IO-bound. You are paying a fixed toll per step, and every piece of silicon in this repo is idling behind the toll booth.
 
 The workload: a 128-64-32 MLP predicting customer churn from `Churn_Dataset.csv` (5,000 telecom customers, 16 numeric features, 341 KB, 14% churn rate). It hits 91-94% test accuracy against an 86% majority baseline, in under a second, on basically anything. Which is precisely why it makes a good probe: with the arithmetic this small, all you can see is the infrastructure. Fixed costs (kernel dispatch, thread barriers, compile time, staging) are usually noise at the bottom of a profile. Here they *are* the profile.
 
-**The stack** (Compute / Orchestration / Compilation / Telemetry): CPU on M4, Grace, and Xeon, plus M4 GPU and TPU v5e (cluster NVIDIA GPU queued behind another tenant) · Docker + Apptainer, on-prem Kubernetes, GKE Autopilot, and a SLURM controller we installed on the head node ourselves · JAX/XLA on CPU and TPU, PyTorch (eager, Inductor wired) on GPU · psutil node sampler, device-synced step timers, nvidia-smi hooks, and one JSON record per run so every chart regenerates from committed data.
+**The stack** (Compute / Orchestration / Compilation / Telemetry): CPU on M4, Grace, and Xeon, GPU on M4 (Metal) and NVIDIA GH200 (CUDA), TPU v5e on GKE · Docker + Apptainer, on-prem Kubernetes, GKE Autopilot, and a SLURM controller we installed on the head node ourselves · JAX/XLA on CPU and TPU, PyTorch (eager, Inductor wired) on GPU · psutil node sampler, device-synced step timers, a 1 Hz nvidia-smi trace, and one JSON record per run so every chart regenerates from committed data.
 
 ## Repository layout (the four phases)
 
@@ -69,6 +69,8 @@ MLP 128-64-32, Adam, 400 epochs, float32. Full 19-config table in the notebook; 
 | CPU Xeon 8-core bs512 | hpcc SLURM | 3.631 | 140 K | 0.914 |
 | CPU Xeon 32-core bs512 | hpcc SLURM | 4.513 | 107 K | 0.918 |
 | CPU Xeon 8-core bs4000 | hpcc SLURM | 7.193 | 540 K | 0.916 |
+| GPU GH200 bs512, PyTorch | hpcc K8s | 3.496 | 92.6 K | 0.920 |
+| GPU GH200 bs4000, PyTorch | hpcc K8s | 4.250 | 642 K | 0.919 |
 | TPU v5e bs512, JAX/XLA | GKE | 2.088 | 189 K | 0.917 |
 | TPU v5e bs4000, JAX/XLA | GKE | 2.144 | 789 K | 0.919 |
 | TPU v5e bs16384, JAX/XLA | GKE | 2.148 | **3,216 K** | 0.919 |
@@ -77,7 +79,7 @@ Read it as three experiments:
 
 **Experiment 1: buy more cores.** M4, 1 to 10 cores: 1.00x. Xeon, 1 to 32 cores: 0.94x, with the node pinned at 99.7% utilization the entire time. Grace, 1 to 32 cores: 0.14x. The best core count on any machine here was between one and eight. Everything past that paid OpenMP barrier costs on GEMMs that finish in microseconds.
 
-**Experiment 2: buy an accelerator.** At the default batch of 512, the M4 GPU is 0.42x its own CPU and the TPU is 0.2x. Accelerators at small batch are dispatch-latency amplifiers: same math, longer launch queue.
+**Experiment 2: buy an accelerator.** At the default batch of 512, the M4 GPU is 0.42x its own CPU, the TPU is 0.2x, and the NVIDIA GH200 480GB, the most powerful chip in this study, manages 92.6 K samples/s: a tenth of a laptop CPU, at 6% peak GPU utilization and 868 MiB of its 97,871 MiB HBM. Accelerators at small batch are dispatch-latency amplifiers: same math, longer launch queue.
 
 **Experiment 3: grow the batch instead.** Same GPU, batch 512 to 4000: 5.15x. Same TPU, batch 512 to 16,384: 17.0x, landing at 3.22 M samples/s, the fastest number in the matrix, at unchanged accuracy. Nobody bought new hardware between those rows. We changed one integer.
 
@@ -130,6 +132,6 @@ apptainer pull containers/churn-cpu.sif docker://pytorch/pytorch:2.7.1-cuda12.6-
 sbatch slurm/train_cpu_hpcc49.sbatch
 ```
 
-Status: complete. All three backend classes (CPU, GPU, TPU) are measured across 15 configs; the comparison the analysis rests on is closed. One opportunistic extra remains queued: the Stanford cluster's time-shared NVIDIA GPU, currently held by another tenant with no guaranteed release. `scripts/watch_gpu_job.sh` watches for it, and if it ever runs, its results drop into the same tables as a 16th row. Nothing in the analysis waits on it.
+Status: complete, including the long shot. The Stanford cluster's time-shared NVIDIA GPU sat behind another tenant for two days; the watch-and-heal loop (`scripts/watch_gpu_job.sh`) rode out a VPN outage and an API-server flake, caught the release, and collected the final rows: it turned out to be a GH200 480GB, and it confirmed the diagnosis harder than any other backend (1-Hz nvidia-smi trace in `telemetry/`). Every planned config is measured.
 
 Deliverables: `reports/executive_report.pdf` · `slides/churn_hpc_slides.pdf` · `notebooks/profiling.ipynb` (executed) · `docs/INFRASTRUCTURE.md`.

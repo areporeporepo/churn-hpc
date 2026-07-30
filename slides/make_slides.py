@@ -42,7 +42,7 @@ with PdfPages(OUT) as pdf:
         ("Dataset:", "Churn_Dataset.csv: 5,000 customers, 16 numeric features, 341 KB. Model: MLP 128-64-32 (JAX/Flax + PyTorch), 91-94% test accuracy vs 86% majority baseline."),
         ("Resource challenge:", "the dataset is tiny but the pipeline must be production-shaped: every hardware tier is oversized, so FIXED costs (compile, kernel dispatch, staging) dominate."),
         ("Question:", "which rung of the hardware ladder (1 CPU core → many cores → GPU → TPU slice) does this workload actually need, and what is the real bottleneck?"),
-        ("Scope delivered:", "15 measured configs across 4 architectures (Apple M4, arm64 Grace, x86 Xeon, TPU v5e) and 3 sites (local, Stanford hpcc cluster, Google Cloud)."),
+        ("Scope delivered:", "17 measured configs across 5 architectures (Apple M4, arm64 Grace, x86 Xeon, NVIDIA GH200, TPU v5e) and 3 sites (local, Stanford hpcc cluster, Google Cloud)."),
     ], y=0.76)
     pdf.savefig(fig); plt.close(fig)
 
@@ -79,7 +79,8 @@ with PdfPages(OUT) as pdf:
     # Panel 1: peak throughput per backend (best measured config)
     a1 = fig.add_axes([0.055, 0.22, 0.27, 0.52])
     peaks = [("CPU\nM4 10c", 0.938, BLUE), ("CPU\nXeon 8c\nbs4000", 0.540, BLUE),
-             ("GPU\nM4 bs4000", 2.013, GREEN), ("TPU v5e\nbs16384", 3.216, ORANGE)]
+             ("GPU\nM4 bs4000", 2.013, GREEN), ("GPU\nGH200\nbs4000", 0.642, GREEN),
+             ("TPU v5e\nbs16384", 3.216, ORANGE)]
     bars = a1.bar([p[0] for p in peaks], [p[1] for p in peaks], color=[p[2] for p in peaks], width=0.62)
     for b, (_, v, _) in zip(bars, peaks):
         a1.annotate(f"{v:.2f}M", (b.get_x() + b.get_width() / 2, v), ha="center",
@@ -95,9 +96,10 @@ with PdfPages(OUT) as pdf:
     a2.plot(bss, [2.088, 2.144, 2.148], "-o", color=ORANGE, lw=2, ms=6, label="TPU v5e")
     a2.plot(bss[:2], [0.395, 1.526], "-o", color=BLUE, lw=2, ms=6, label="CPU M4 (XLA)")
     a2.plot(bss[:2], [1.244, 1.739], "-o", color=GREEN, lw=2, ms=6, label="GPU M4 (MPS)")
+    a2.plot(bss[:2], [3.496, 4.250], "-o", color=VERM, lw=2, ms=6, label="GPU GH200 (CUDA)")
     a2.set_xscale("log"); a2.set_xticks(bss); a2.set_xticklabels(bss, fontsize=8.5)
     a2.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
-    a2.set_ylim(0, 2.5); a2.tick_params(labelsize=8.5)
+    a2.set_ylim(0, 4.6); a2.tick_params(labelsize=8.5)
     a2.set_xlabel("batch size", fontsize=10); a2.set_ylabel("p50 step time (ms)", fontsize=10)
     a2.set_title("Step time vs batch: TPU is flat", fontsize=12)
     a2.legend(frameon=False, fontsize=8.5)
@@ -117,16 +119,16 @@ with PdfPages(OUT) as pdf:
     a3.tick_params(labelsize=8.5)
     a3.spines[["top", "right"]].set_visible(False); a3.grid(axis="y", alpha=0.25); a3.set_axisbelow(True)
 
-    ax.text(0.05, 0.115, "Speedups (bs512 → best): GPU 5.15x via batch alone · TPU 17.0x via batch alone (constant 2.1 ms step) · 10x/32x cores: 1.00x / 0.94x / 0.14x.\n"
-                         "Xeon 32-core run: 99.7% node utilization, less throughput than 1 core. Utilization is not throughput.",
+    ax.text(0.05, 0.115, "Speedups (bs512 → best): GPU 5.15x and TPU 17.0x via batch alone (TPU step constant at 2.1 ms) · extra cores: 1.00x / 0.94x / 0.14x.\n"
+                         "GH200 480GB at bs512: 92.6K samples/s (0.1x a laptop CPU) at 6% GPU util and 0.9% HBM. Xeon 32c: 99.7% util, slower than 1 core.",
             fontsize=11, color=MUT, va="top")
     pdf.savefig(fig); plt.close(fig)
 
     # ── Slide 5: Conclusion ─────────────────────────────────────────────────
     fig, ax = new_slide(5, "The Bottleneck Is Dispatch Latency, Not Hardware", "CONCLUSION")
     bullets(ax, [
-        ("Bottleneck identified:", "fixed per-step host-side launch cost, confirmed on four architectures: core-count indifference (M4), negative core scaling (Grace 0.14x, Xeon at 100% util), and a TPU step time constant across a 32x batch range."),
-        ("What worked:", "batch scaling (GPU 5.15x, TPU 17.0x), XLA train-step fusion, device-resident data (zero IO stalls). What didn't: more cores (≤1.00x everywhere), bf16 on CPU (0.75x), accelerators at default batch (0.2-0.4x)."),
+        ("Bottleneck identified:", "fixed per-step host-side launch cost, confirmed on five architectures: core-count indifference (M4), negative core scaling (Grace 0.14x, Xeon at 100% util), a TPU step constant across a 32x batch range, and a GH200 at 6% util / 0.9% HBM."),
+        ("What worked:", "batch scaling (GPU 5.15x, TPU 17.0x), XLA train-step fusion, device-resident data (zero IO stalls). What didn't: more cores (≤1.00x everywhere), bf16 on CPU (0.75x), accelerators at default batch (0.1-0.4x)."),
         ("Cost trade-off:", "TPU v5e wins throughput 3.4x over the best CPU but costs ~10x a CPU node-hour and 7 min of provisioning; below ~1M rows a single CPU node with XLA is cost-optimal for one job."),
         ("Scaling recommendation:", "grow batch (with LR warmup) before growing hardware; fuse epochs with jax.lax.scan; spend accelerator manifests on parallel hyperparameter sweeps, where the TPU's 3.22M samples/s actually converts to wall-clock wins."),
         ("Lesson:", "measure fixed costs before buying parallelism: the scaling matrix falsified three 'obvious' upgrades (more cores, GPU at default batch, bf16-everywhere) with under a minute of total compute."),

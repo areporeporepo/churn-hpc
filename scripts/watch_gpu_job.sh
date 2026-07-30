@@ -18,8 +18,8 @@ remote() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$HEAD" \
 
 while true; do
   raw=$(remote "kubectl get pods -l app=churn-hpc --no-headers")
-  if echo "$raw" | grep -qiE "refused|unable to connect|timed out|error from server|no route"; then
-    st="ApiDown"          # transient control-plane/VPN flake: never resubmit on this
+  if echo "$raw" | grep -qiE "refused|unable to connect|timed out|error from server|no route|could not resolve|^ssh:|connection closed|broken pipe"; then
+    st="ApiDown"          # transient VPN/SSH/control-plane flake: never resubmit on this
     line="$raw"
   else
     line=$(echo "$raw" | grep churn-train-gpu || true)

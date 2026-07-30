@@ -208,6 +208,22 @@ epochs.</p>
 <td>0.916</td>
 </tr>
 <tr>
+<td>GPU GH200, bs 512</td>
+<td>hpcc K8s</td>
+<td>0.270</td>
+<td>3.496</td>
+<td>92.6 K</td>
+<td>0.920</td>
+</tr>
+<tr>
+<td>GPU GH200, bs 4000</td>
+<td>hpcc K8s</td>
+<td>0.253</td>
+<td>4.250</td>
+<td>642 K</td>
+<td>0.919</td>
+</tr>
+<tr>
 <td>TPU v5e, bs 512</td>
 <td>GKE</td>
 <td>0.378</td>
@@ -281,6 +297,15 @@ bootstrap in 25 s; all 4 chips visible to JAX. Step time is
 throughput scales linearly with batch: 189 K -&gt; 789 K -&gt;
 <strong>3.22 M samples/s</strong>, the best measured figure in the
 matrix, at 0.919 test accuracy.</p>
+<p><em>Stanford hpcc NVIDIA GH200 480GB (K8s, time-shared).</em> The
+single cluster GPU freed after two days behind another tenant; the
+watch-and-heal loop caught the release and collected the run. The most
+powerful chip in the study posted the weakest small-batch number: 92.6 K
+samples/s at batch 512 (a tenth of a laptop CPU) with a 3.5 ms step
+floor, rising to 642 K at batch 4000. The 1 Hz nvidia-smi trace shows
+<strong>6% peak GPU utilization and 868 MiB of 97,871 MiB HBM
+(0.9%)</strong> during training: measured proof that the workload never
+touches the hardware’s capability, only its launch queue.</p>
 <figure>
 <img src="figures/fig5_cluster.png" alt="Cluster rungs" />
 <figcaption aria-hidden="true">Cluster rungs</figcaption>
@@ -323,16 +348,17 @@ only earns its premium on this workload when it is batching many
 training jobs, not accelerating one.</p>
 <h1 id="status-and-next-steps">7. Status and Next Steps</h1>
 <p>The study is complete: all three backend classes (CPU, GPU, TPU) are
-measured across 15 configurations, four architectures (Apple M4 CPU/GPU,
-arm64 Grace, x86 Xeon under SLURM, TPU v5e), and three sites (local,
-Stanford hpcc, Google Cloud). One opportunistic extra remains queued and
-is not load-bearing: the Stanford cluster’s single NVIDIA GPU is
-time-shared and currently held by another tenant with no guaranteed
-release; a watch-and-heal loop (<code>scripts/watch_gpu_job.sh</code>)
-collects its results into the same JSON schema if it ever schedules. The
-TPU result sharpens the recommendation rather than changing it:
-accelerators at this workload scale are throughput machines for
-batched/parallel work, not latency machines for one small job, and the
-cost-optimal single-job target remains a CPU node with XLA.</p>
+measured across 17 configurations, five architectures (Apple M4 CPU/GPU,
+arm64 Grace, x86 Xeon under SLURM, NVIDIA GH200, TPU v5e), and three
+sites (local, Stanford hpcc, Google Cloud). The GH200 rows arrived last,
+collected automatically after two days queued behind another tenant, and
+strengthened the diagnosis rather than changing it: at this workload
+scale, accelerators are throughput machines for batched and parallel
+work, not latency machines for one small job, and the cost-optimal
+single-job target remains a CPU node with XLA. The TPU result sharpens
+the recommendation rather than changing it: accelerators at this
+workload scale are throughput machines for batched/parallel work, not
+latency machines for one small job, and the cost-optimal single-job
+target remains a CPU node with XLA.</p>
 </body>
 </html>

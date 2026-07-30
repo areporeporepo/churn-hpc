@@ -136,6 +136,7 @@ if tpu16k:
     peaks = [("CPU\nM4 10c\nbs512", load("cpu_10core_torch"), BLUE),
              ("CPU\nXeon SLURM\n8c bs4000", maybe("slurm_8c_bs4000"), BLUE),
              ("GPU\nM4 MPS\nbs4000", load("gpu_mps_bs4000"), GREEN),
+             ("GPU\nGH200\nbs4000", maybe("gpu_cluster_bs4000"), GREEN),
              ("TPU\nv5e slice\nbs16384", tpu16k, ORANGE)]
     peaks = [(l, r, c) for l, r, c in peaks if r]
     bars = a1.bar([p[0] for p in peaks], [p[1]["samples_per_sec"] / 1e6 for p in peaks],
@@ -151,6 +152,10 @@ if tpu16k:
     a2.plot(bss, tpu_p50, "-o", color=ORANGE, lw=2, ms=7, label="TPU v5e (XLA)")
     a2.plot(bss[:2], cpu_p50[:2], "-o", color=BLUE, lw=2, ms=7, label="CPU M4 (XLA)")
     a2.plot(bss[:2], gpu_p50[:2], "-o", color=GREEN, lw=2, ms=7, label="GPU M4 (MPS)")
+    gh512, gh4k = maybe("gpu_cluster_bs512"), maybe("gpu_cluster_bs4000")
+    if gh4k:
+        a2.plot(bss[:2], [gh512["p50_step_ms"], gh4k["p50_step_ms"]], "-o",
+                color=VERM, lw=2, ms=7, label="GPU GH200 (CUDA)")
     a2.set_xscale("log"); a2.set_xticks(bss); a2.set_xticklabels(bss)
     a2.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
     a2.set_ylim(0)
