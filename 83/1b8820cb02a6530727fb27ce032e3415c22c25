@@ -1,0 +1,50 @@
+slides/presenter_script.md
+  s_45f5215dfdf8ec::t_db8d3c97da7bf2 1-18
+notebooks/profiling.ipynb
+  s_45f5215dfdf8ec::t_c272af571a8f05 24-27,251-254,470-473,496-499,547-550,589,602,628,693,719-732,745,758,797,810,823,849,862,875-887,906-907,909,914,916-919,922-924,926-928,932-933,935,940,942-945,948-950,952-954,986-989
+benchmarks/results/gpu_cluster_bs4000.json
+  s_45f5215dfdf8ec::t_7c8af135c91704 1
+benchmarks/make_figures.py
+  s_45f5215dfdf8ec::t_a79e58fb51c700 139
+  s_45f5215dfdf8ec::t_01c576ec88211f 155-158
+reports/executive_report.md
+  s_45f5215dfdf8ec::t_5902555d123ebf 172-179
+  s_45f5215dfdf8ec::t_c99f5877e38b2e 123-131
+  s_45f5215dfdf8ec::t_e9a18e22aaa520 82-83
+scripts/watch_gpu_job.sh
+  s_45f5215dfdf8ec::t_26873ebb0a6efc 21-22
+benchmarks/results/gpu_cluster_bs512.json
+  s_45f5215dfdf8ec::t_7c8af135c91704 1
+telemetry/churn-train-gpu_smi.csv
+  s_45f5215dfdf8ec::t_7c8af135c91704 1-28
+README.md
+  s_45f5215dfdf8ec::t_66dda6c63615af 135
+  s_45f5215dfdf8ec::t_142899af71183c 72-73
+  s_45f5215dfdf8ec::t_5cc60840cb1c44 82
+  s_45f5215dfdf8ec::t_19837ace2088d8 3,5
+  s_45f5215dfdf8ec::t_cbd0cac79a0cb0 11
+slides/make_slides.py
+  s_45f5215dfdf8ec::t_fd13a1d2e81195 122-123
+  s_45f5215dfdf8ec::t_a220673e573c55 45
+  s_45f5215dfdf8ec::t_86e49058aaee05 130-131
+  s_45f5215dfdf8ec::t_9c1b55e451db44 99,102
+  s_45f5215dfdf8ec::t_3f64ed14b60d9a 82-83
+reports/executive_report.html
+  s_45f5215dfdf8ec::t_c272af571a8f05 211-226,300-308,351-362
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "831b8820cb02a6530727fb27ce032e3415c22c25",
+  "prompts": {},
+  "sessions": {
+    "s_45f5215dfdf8ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9f012dd-b82d-4f6f-935f-0d4cc87d6a27",
+        "model": "claude-fable-5"
+      },
+      "human_author": "anh nguyen <anh.nqqq@icloud.com>"
+    }
+  }
+}
